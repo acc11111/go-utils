@@ -1,0 +1,58 @@
+name: Go Build and Check
+
+# 触发条件
+on:
+  push:
+    branches: [ "main" ]  # 监听推送至 main 分支
+  workflow_dispatch:      # 开启手动触发按钮，支持在任意分支手动运行
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+
+    # 核心权限配置
+    permissions:
+      security-events: write  # 允许写入 GitHub Security 面板
+      contents: read          # 允许读取仓库代码进行分析
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: true
+
+      # 1. 静态检查
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+
+      # 2. CodeQL 安全扫描
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'go'
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      # 3. 单元测试
+      - name: Run Go Test
+        run: go test -v -cover ./... # 加上 -cover 顺便看覆盖率
+
+      # 4. 编译构建
+      - name: Build
+        run: go build -v -o my-utils ./...
+
+      # 通知
+      - name: Notify Bark
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            curl -L "https://api.day.app/${{ secrets.BARK_KEY }}/流水线成功/环节:${{ github.job }}?group=CI"
+          else
+            curl -L "https://api.day.app/${{ secrets.BARK_KEY }}/流水线失败/环节:${{ github.job }}?group=CI"
+          fi
+         
